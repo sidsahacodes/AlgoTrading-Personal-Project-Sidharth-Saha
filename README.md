@@ -9,17 +9,6 @@ Long-only momentum strategy using **K-Means clustering** to group S&P 500 stocks
 3. Long top 5 stocks per cluster (~25 positions)
 4. Rebalance monthly
 
-## Quick Start
-
-```bash
-pip install pandas numpy scikit-learn hdbscan yfinance pandas_ta statsmodels matplotlib seaborn
-
-cd src
-python main.py                    # Generate features
-python generate_clusters.py       # Apply clustering
-python long_only_strategy.py      # Backtest strategy
-```
-
 ## Project Structure
 
 ```
@@ -63,4 +52,4 @@ python long_only_strategy.py      # Backtest strategy
 
 ---
 
-**For educational purposes only. Not financial advice.**
+
