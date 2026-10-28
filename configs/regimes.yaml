@@ -1,0 +1,54 @@
+# configs/regimes.yaml — named parameter overlays applied on top of strategy.yaml.
+#
+#   Select with:  MR_REGIME=stress   or   mr --regime stress <command>
+#
+# !!  EVERYTHING EXCEPT `baseline` IS AN UNTESTED STARTING HYPOTHESIS.  !!
+# The numbers are illustrative, not calibrated, and have not been validated by
+# any backtest in this repo (see docs/REGIME_PLAYBOOK.md and docs/KNOWN_LIMITATIONS.md).
+# The backtest (mr backtest, scripts/stress_windows.py) applies a preset to a whole window, net of costs;
+# it cannot say whether you would have recognised the regime in time. universe_size and ff_beta_window
+# also need an L2 rebuild before they take effect.
+# Log every regime decision in research_logs/.
+#
+# Every key under `overrides` must exist in strategy.yaml.
+# `requires` lists the re-run needed before the preset is fully in effect.
+# `mr` warns when caches were built with different parameters than the active ones.
+
+baseline:
+  description: "Normal market. Exactly the values in strategy.yaml."
+  requires: []
+  overrides: {}
+
+stress:
+  description: "R2 - volatile sell-off building (VIX elevated, SPY drawdown 10-20%). Tighter liquidity screen, HRP reacts faster, less churn."
+  requires: ["L2 (universe_size)"]
+  overrides:
+    universe_size: 100
+    hrp_lookback_months: 48
+    min_trade_pct: 0.005
+
+crash:
+  description: "R3 - crash / liquidity event, correlations -> 1. Cut gross exposure, trade less."
+  requires: []
+  overrides:
+    exposure_scalar: 0.6
+    hrp_lookback_months: 48
+    min_trade_pct: 0.01
+
+rebound:
+  description: "R4 - sharp rebound after a drawdown (momentum-crash risk). Slower signal, a bit more diversification, reduced exposure."
+  requires: []
+  overrides:
+    momentum_feature: return_6m
+    top_n_per_cluster: 5
+    portfolio_size: 25
+    exposure_scalar: 0.75
+
+rotation:
+  description: "R5 - leadership rotation / factor regime shift. More stable betas, a different cluster count."
+  requires: ["L2 (ff_beta_window)", "L1 (n_clusters)"]
+  overrides:
+    ff_beta_window: 36
+    n_clusters: 6
+    top_n_per_cluster: 3
+    portfolio_size: 18

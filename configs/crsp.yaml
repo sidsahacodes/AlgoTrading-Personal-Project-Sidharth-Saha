@@ -1,0 +1,48 @@
+# configs/crsp.yaml — WRDS / CRSP settings, used only when `price_source: crsp` in strategy.yaml.
+#
+# Written for CRSP's CIZ ("v2") tables, which are the current format; the legacy SIZ tables
+# (dsf, msf, dsedelist) are no longer updated. Run `mr crsp-check` first: it connects, finds the
+# tables and columns on YOUR subscription, and tells you what is missing. If a name differs on
+# your account, change it here; no code change is needed.
+#
+# CIZ detail that matters: the delisting return is ALREADY INCLUDED in the daily return
+# (`dlyret`, on a separate row flagged dlydelflg = 'Y'). Never compound a separate delisting
+# return on top of it (that double-counts the loss).
+
+wrds:
+  username_env: WRDS_USERNAME      # name of the environment variable holding your WRDS username (put it in .env)
+
+libraries:                         # the first library that contains the table is used
+  stock:   [crsp_m_stock, crsp_q_stock, crsp_a_stock, crsp]
+  indexes: [crsp_m_indexes, crsp_q_indexes, crsp_a_indexes, crsp]
+
+tables:
+  daily: dsf_v2
+  membership: [dsp500list_v2, msp500list_v2]       # first that exists
+  security_info: stksecurityinfohist
+
+columns:
+  daily:
+    permno: permno
+    date: dlycaldt
+    delisting_flag: dlydelflg
+    price: dlyprc
+    ret: dlyret
+    volume: dlyvol
+    open: dlyopen
+    high: dlyhigh
+    low: dlylow
+  membership:
+    permno: permno
+    start: mbrstartdt
+    end: mbrenddt
+  security_info:
+    permno: permno
+    start: secinfostartdt
+    end: secinfoenddt
+    ticker: ticker
+
+# CRSP's S&P 500 membership is updated annually, so recent months have no point-in-time membership.
+#   false: the sample ends at the last month CRSP's membership list covers (recommended)
+#   true:  months after that reuse the last member list, until the price data end (not point-in-time)
+extend_membership: false
