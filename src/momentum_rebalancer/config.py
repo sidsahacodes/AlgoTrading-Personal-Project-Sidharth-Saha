@@ -26,7 +26,7 @@ except ImportError:                    # pragma: no cover
     load_dotenv = None
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
-if load_dotenv is not None:
+if load_dotenv is not None and not os.getenv("MR_NO_DOTENV"):      # tests set MR_NO_DOTENV so a local .env cannot leak in
     load_dotenv(REPO_ROOT / ".env")
 
 CONFIG_DIR = Path(os.getenv("MR_CONFIG_DIR", REPO_ROOT / "configs"))

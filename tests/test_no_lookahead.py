@@ -83,3 +83,48 @@ def test_technical_indicators_do_not_depend_on_other_tickers():
     for col in ["gkv", "rsi", "bblow", "bbmid", "bbhigh", "atr", "macd"]:
         assert np.allclose(alone[col].dropna().values, joint.loc[alone[col].dropna().index, col].values,
                            atol=1e-9, equal_nan=True), f"{col} depends on other tickers"
+
+
+# ── short and odd series (index members that traded only a few days) ──────────
+
+def _series(name, n, seed, start="2015-01-02"):
+    rng = np.random.default_rng(seed)
+    d = pd.bdate_range(start, periods=n)
+    r = rng.normal(0.0004, 0.015, n)
+    px = 30 * np.exp(np.cumsum(r))
+    return pd.DataFrame({"adj close": px, "close": px, "high": px * 1.01, "low": px * 0.99, "open": px,
+                         "volume": 1e6, "Date": d, "Ticker": name})
+
+
+@pytest.mark.parametrize("short_lengths", [[3], [1], [10], [3, 10, 1, 13], [14]])
+def test_tickers_shorter_than_an_indicator_window_do_not_break_the_calculation(short_lengths):
+    from momentum_rebalancer.features.technical import compute_all_technicals
+    long_ = _series("LONG", 300, seed=1)
+    shorts = [_series(f"S{i}", n, seed=10 + i) for i, n in enumerate(short_lengths)]
+    prices = pd.concat([long_, *shorts]).set_index(["Date", "Ticker"]).sort_index()
+    out = compute_all_technicals(prices)
+
+    assert out.index.equals(prices.index) and out.index.is_unique
+    cols = ["gkv", "rsi", "bblow", "bbmid", "bbhigh", "atr", "macd"]
+    assert set(cols) <= set(out.columns)
+    # a short ticker simply has no value for an indicator it cannot compute; it must never poison others
+    alone = compute_all_technicals(pd.concat([long_, _series("PAD", 300, seed=99)]).set_index(["Date", "Ticker"]).sort_index())
+    for c in cols:
+        a = alone.xs("LONG", level="Ticker")[c].dropna()
+        b = out.xs("LONG", level="Ticker").loc[a.index, c]
+        assert np.allclose(a.values, b.values, atol=1e-9, equal_nan=True), c
+
+
+def test_a_frame_with_a_single_ticker_still_works():
+    from momentum_rebalancer.features.technical import compute_all_technicals
+    prices = _series("ONE", 120, seed=3).set_index(["Date", "Ticker"]).sort_index()
+    out = compute_all_technicals(prices)
+    assert out["rsi"].notna().sum() > 80 and out["macd"].notna().sum() > 60
+
+
+def test_duplicate_rows_are_dropped_not_fatal():
+    from momentum_rebalancer.features.technical import compute_all_technicals
+    p = pd.concat([_series("A", 100, 1), _series("B", 100, 2)]).set_index(["Date", "Ticker"]).sort_index()
+    dup = pd.concat([p, p.iloc[:5]])
+    out = compute_all_technicals(dup)
+    assert out.index.is_unique and len(out) == len(p)

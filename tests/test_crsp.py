@@ -321,6 +321,11 @@ def test_a_stock_delisted_just_before_month_end_is_not_tradable_then():
     assert "GONE" in names_feb and "GONE" not in names_march and "LIVE" in names_march
 
 
+def test_the_suite_cannot_open_a_real_wrds_connection():
+    with pytest.raises(AssertionError, match="real WRDS connection"):
+        crsp.connect(CFG)
+
+
 # ── crsp-check ────────────────────────────────────────────────────────────────
 
 def test_check_passes_on_a_healthy_subscription(world):
@@ -360,3 +365,44 @@ def test_settings_loader_rejects_a_broken_crsp_yaml(tmp_path):
     (d / "crsp.yaml").write_text(yaml.safe_dump(cfg))
     with pytest.raises(ValueError, match="columns.daily.ret"):
         C.load_crsp_settings(d)
+
+
+def test_short_lived_index_members_do_not_break_the_feature_pipeline(tmp_path, monkeypatch):
+    """CRSP includes companies that traded only a few days inside the window (acquired right after it
+    opens). They have fewer rows than any indicator window and must be handled, not crash the build."""
+    from momentum_rebalancer.features import pipeline, returns
+    members, info, daily = _world(n_tickers=40)
+
+    extra_m, extra_i, extra_d = [], [], []
+    for permno, ticker, n_days, delist in [(902, "BRIEF", 5, True), (903, "TINY", 1, False), (904, "SHORT", 11, True)]:
+        d = pd.bdate_range("2011-01-03", periods=n_days)
+        extra_m.append((permno, d[0], d[-1] + pd.Timedelta(days=3), 1, "C", 1))
+        extra_i.append((permno, d[0], d[-1], ticker))
+        px = 20.0
+        for i, dt in enumerate(d):
+            extra_d.append((permno, dt, "N", px, np.nan if i == 0 else 0.0, 1e6, px, px * 1.01, px * 0.99))
+        if delist:
+            extra_d.append((permno, d[-1] + pd.Timedelta(days=1), "Y", np.nan, -0.25, np.nan, np.nan, np.nan, np.nan))
+    members = pd.concat([members, pd.DataFrame(extra_m, columns=members.columns)], ignore_index=True)
+    info = pd.concat([info, pd.DataFrame(extra_i, columns=info.columns)], ignore_index=True)
+    daily = pd.concat([daily, pd.DataFrame(extra_d, columns=daily.columns)], ignore_index=True)
+
+    monkeypatch.setattr(loader, "PRICE_SOURCE", "crsp")
+    monkeypatch.setattr(loader, "SETTINGS", {**C.SETTINGS, "price_source": "crsp"})
+    monkeypatch.setattr(loader, "PIT_MEMBERS_PATH", tmp_path / "pit_members.parquet")
+    monkeypatch.setattr(loader, "RAW_PRICES_PATH", tmp_path / "prices_raw.parquet")
+    monkeypatch.setattr(loader, "COVERAGE_PATH", tmp_path / "price_coverage.json")
+    monkeypatch.setattr(crsp, "connect", lambda cfg: FakeDB(members, info, daily))
+    crsp.clear_bundle()
+
+    rng = np.random.default_rng(5)
+    ff_idx = pd.period_range("2010-01", "2026-06", freq="M")
+    ff = pd.DataFrame(rng.normal(0, 2, (len(ff_idx), 6)), index=ff_idx, columns=["Mkt-RF", "SMB", "HML", "RMW", "CMA", "RF"])
+    monkeypatch.setattr(returns.web, "DataReader", lambda *a, **k: [ff])
+    monkeypatch.setattr(pipeline, "MODELING_DATA_PATH", tmp_path / "modeling_data.parquet")
+    monkeypatch.setattr(pipeline, "MONTHLY_RETURNS_PATH", tmp_path / "monthly_returns.parquet")
+    monkeypatch.setattr(loader, "last_completed_month_end", lambda today=None: pd.Timestamp("2026-09-30"))
+
+    data = pipeline.build_modeling_data(force_refresh=True)
+    assert list(data.columns) == C.FEATURE_COLS and len(data) > 0
+    crsp.clear_bundle()

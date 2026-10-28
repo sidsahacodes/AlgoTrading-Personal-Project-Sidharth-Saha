@@ -270,7 +270,8 @@ def cmd_backtest(args):
     print(f"  Sharpe {m['sharpe']:.2f}   Sortino {m['sortino']:.2f}   max drawdown {pct(m['max_drawdown'])}   win rate {pct(m['win_rate'])}")
     print(f"  Avg monthly traded      {pct(m['avg_monthly_traded'])} of NAV")
     if "benchmark_ann_return" in m:
-        print(f"  SPY annualised return   {pct(m['benchmark_ann_return'])}   alpha {pct(m['alpha'])}   beta {m['beta']:.2f}")
+        print(f"  SPY annualised return   {pct(m['benchmark_ann_return'])}   excess return {pct(m['excess_return'])}   "
+              f"alpha {pct(m['alpha'])} (CAPM, rf=0)   beta {m['beta']:.2f}")
     else:
         print("  SPY benchmark unavailable (download failed): benchmark metrics omitted")
     d = res.diagnostics

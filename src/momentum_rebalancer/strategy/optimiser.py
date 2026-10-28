@@ -133,7 +133,7 @@ def hrp(
     total = sum(weights.values())
     weights = {t: w / total for t, w in weights.items()}
 
-    logger.info(
+    logger.debug(
         "HRP weights computed for %d assets. Min=%.3f, Max=%.3f",
         len(weights), min(weights.values()), max(weights.values()),
     )

@@ -198,9 +198,11 @@ def compute_metrics(returns: pd.Series, benchmark: pd.Series | None = None) -> d
         b_cum   = (1 + b).prod() - 1
         b_ann   = (1 + b_cum) ** (12 / len(b)) - 1
         b_sharpe = (b.mean() / b.std()) * np.sqrt(12) if b.std() > 0 else 0
-        alpha   = r_b.mean() - b.mean()
         beta    = r_b.cov(b) / b.var() if b.var() > 0 else 0
+        excess  = r_b.mean() - b.mean()                     # plain average difference, not beta-adjusted
+        alpha   = r_b.mean() - beta * b.mean()              # CAPM alpha (risk-free rate taken as 0)
         metrics.update({
+            "excess_return":        round(float(excess * 12), 4),
             "alpha":                round(float(alpha * 12), 4),
             "beta":                 round(float(beta), 3),
             "benchmark_ann_return": round(float(b_ann), 4),
