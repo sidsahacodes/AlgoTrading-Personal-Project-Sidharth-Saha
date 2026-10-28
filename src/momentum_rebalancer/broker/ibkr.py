@@ -59,12 +59,14 @@ def _get_price(ib: IB, contract) -> float | None:
     Falls back to yfinance if TWS returns NaN (e.g. outside market hours).
     """
     md = ib.reqMktData(contract, "", False, False)
-    ib.sleep(2)
-
-    # Try each price field in order of preference
-    for field in [md.last, md.close, md.bid, md.ask]:
-        if field and not math.isnan(float(field)) and float(field) > 0:
-            return float(field)
+    try:
+        ib.sleep(2)
+        # Try each price field in order of preference
+        for field in [md.last, md.close, md.bid, md.ask]:
+            if field and not math.isnan(float(field)) and float(field) > 0:
+                return float(field)
+    finally:
+        ib.cancelMktData(contract)            # free the market-data line either way
 
     # Fallback: yfinance last close
     logger.info("TWS price unavailable for %s — falling back to yfinance.", contract.symbol)
@@ -112,6 +114,23 @@ def get_current_holdings() -> dict[str, float]:
         ib.disconnect()
 
 
+def sell_quantity(sized_shares: int, target_pct: float, held: float) -> int:
+    """
+    Whole shares to sell.
+
+    * A full exit (target weight 0) sells everything actually held, not a count derived from a
+      weight and a price, which can leave a stray share behind.
+    * A partial sell is sized from the weight but never exceeds what is held.
+    * A symbol that is not held is never sold (that would open a short).
+    """
+    whole = int(held)
+    if whole <= 0:
+        return 0
+    if target_pct <= 0:
+        return whole
+    return min(sized_shares, whole)
+
+
 def execute_trades(trades: list[Trade]) -> list[dict]:
     """Submit trades as market orders to TWS. Returns list of fill records."""
     ib = _connect()
@@ -119,6 +138,7 @@ def execute_trades(trades: list[Trade]) -> list[dict]:
 
     try:
         total = _net_liq(ib)
+        held = {item.contract.symbol: float(item.position) for item in ib.portfolio()}
 
         for trade in trades:
             # Qualify contract
@@ -137,9 +157,11 @@ def execute_trades(trades: list[Trade]) -> list[dict]:
 
             # Size the order
             dollar_amount = abs(trade.delta_pct) * total
-            shares = int(dollar_amount / price)
-            if shares == 0:
-                logger.info("%s trade too small (<1 share) — skipping.", trade.ticker)
+            shares = int(dollar_amount / price + 1e-6)          # tolerate float noise (99.9999999 means 100)
+            if trade.action == "SELL":
+                shares = sell_quantity(shares, trade.target_pct, held.get(trade.ticker, 0.0))
+            if shares <= 0:
+                logger.info("%s: nothing to %s (too small, or not held) — skipping.", trade.ticker, trade.action.lower())
                 continue
 
             # Place market order
