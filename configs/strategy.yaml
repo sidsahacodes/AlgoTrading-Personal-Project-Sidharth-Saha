@@ -1,0 +1,88 @@
+# configs/strategy.yaml — BASELINE parameters (single source of truth).
+#
+# Section headings are for readability only. Every key below must be unique
+# across the whole file, because regime overlays (regimes.yaml) refer to keys
+# by name, e.g. `universe_size`.
+#
+# After editing, check docs/PARAMETERS.md for which re-run you need:
+#   L0 none | L1 `mr cluster --force` | L2 `mr build-features --force` (re-downloads prices)
+
+regime: baseline            # overridden by env MR_REGIME or `mr --regime NAME ...`
+
+universe:                   # L2
+  lookback_years: 15        # years of prices downloaded; the first ~3 are warm-up (36m history + 24m betas)
+  min_history_months: 36    # month-end rows a ticker needs *before* a date to be eligible on that date
+  universe_size: 150
+  max_stale_days: 7         # a stock must have traded within this many days of the month-end to be tradable
+  price_source: yahoo       # yahoo | crsp. `crsp` uses WRDS (configs/crsp.yaml): delisted prices, delisting returns, CRSP membership
+  pit_url: "https://raw.githubusercontent.com/fja05680/sp500/master/S%26P%20500%20Historical%20Components%20%26%20Changes%20%28Updated%29.csv"
+  pit_allow_fallback: false # false = stop if the membership list cannot be downloaded; true = use today's members (survivorship-biased)
+
+features:                   # L2
+  rsi_period: 14
+  atr_period: 14
+  bb_period: 20
+  macd_fast: 12
+  macd_slow: 26
+  macd_signal: 9
+  ff_beta_window: 24        # months; 24 obs vs 6 coefficients is already thin
+  return_lags: [1, 2, 3, 6, 9, 12]   # every return_<n>m must also be in feature_cols
+  feature_cols:
+    - gkv
+    - rsi
+    - bblow
+    - bbmid
+    - bbhigh
+    - atr
+    - macd
+    - dv_rank
+    - return_1m
+    - return_2m
+    - return_3m
+    - return_6m
+    - return_9m
+    - return_12m
+    - beta_mkt
+    - beta_smb
+    - beta_hml
+    - beta_rmw
+    - beta_cma
+
+clustering:                 # L1
+  cluster_method: kmeans    # kmeans | gmm | pca_kmeans | hdbscan
+  n_clusters: 5
+  pca_components: 6
+  hdbscan_min_size: 15
+  random_state: 42
+
+strategy:                   # L0 (read at signal / trade time)
+  momentum_feature: return_3m
+  top_n_per_cluster: 4      # 5 clusters x 4 = 20 names
+  portfolio_size: 20
+  optimiser: hrp            # hrp | equal
+  hrp_lookback_months: null # null = all history; else use the most recent N months (>= 36 advised)
+  exposure_scalar: 1.0      # 1.0 = fully invested; 0.6 = target weights x 0.6, remainder cash
+  min_trade_pct: 0.0        # skip entry/resize trades smaller than this weight change (0.005 = 0.5%); exits always trade
+
+backtest:                   # L0 (assumptions used by the backtest and the walk-forward)
+  cost_bps: 10.0            # cost per unit of traded notional, one way, in basis points (assumption, not measured)
+  delisting_return: -0.30   # return assumed when a held stock has no price at all in the next month (assumption)
+
+regime_monitor:             # thresholds used by `mr regime` (illustrative; calibrate)
+  spy_dd_caution: -0.10     # SPY drawdown from trailing 12m high
+  spy_dd_stress: -0.20
+  vix_caution: 25.0
+  vix_stress: 30.0
+  corr_jump: 0.15           # recent avg pairwise corr minus long-run avg
+  cluster_max_share: 0.50   # warn if one cluster holds more than this share of stocks
+
+broker:
+  broker: paper             # paper | ibkr   (env MR_BROKER overrides)
+  portfolio_value: 1000000  # fallback NAV / starting cash of a fresh paper ledger
+  tws_host: 127.0.0.1
+  tws_port: 7497            # 7497 = paper, 7496 = live
+
+dashboard:
+  dashboard_host: 127.0.0.1
+  dashboard_port: 5001
+  dashboard_debug: false

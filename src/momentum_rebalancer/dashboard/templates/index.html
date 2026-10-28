@@ -1,0 +1,537 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Momentum Rebalancer</title>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    :root {
+      --bg:      #0d1117;
+      --surface: #161b22;
+      --surface2:#1c2128;
+      --border:  #30363d;
+      --text:    #e6edf3;
+      --muted:   #8b949e;
+      --green:   #3fb950;
+      --red:     #f85149;
+      --blue:    #58a6ff;
+      --yellow:  #d29922;
+      --purple:  #bc8cff;
+      --radius:  6px;
+      --mono:    'SF Mono','Fira Code','Consolas',monospace;
+    }
+    body { background:var(--bg); color:var(--text); font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif; font-size:14px; line-height:1.6; }
+
+    /* Header */
+    header { border-bottom:1px solid var(--border); padding:14px 32px; display:flex; align-items:center; justify-content:space-between; }
+    header h1 { font-size:15px; font-weight:600; }
+    .badges { display:flex; gap:8px; align-items:center; }
+    .badge { font-size:11px; font-family:var(--mono); padding:2px 8px; border-radius:12px; border:1px solid var(--border); color:var(--muted); }
+    .badge.live { border-color:var(--green); color:var(--green); }
+
+    /* Tabs */
+    .tabs { border-bottom:1px solid var(--border); padding:0 32px; display:flex; gap:0; }
+    .tab { padding:12px 20px; cursor:pointer; font-size:13px; font-weight:500; color:var(--muted); border-bottom:2px solid transparent; margin-bottom:-1px; transition:color .15s; }
+    .tab:hover { color:var(--text); }
+    .tab.active { color:var(--text); border-bottom-color:var(--blue); }
+
+    main { max-width:1280px; margin:0 auto; padding:28px 32px; }
+    .tab-content { display:none; }
+    .tab-content.active { display:block; }
+
+    /* Stats grid */
+    .stats { display:grid; grid-template-columns:repeat(4,1fr); gap:14px; margin-bottom:28px; }
+    .stat { background:var(--surface); border:1px solid var(--border); border-radius:var(--radius); padding:18px 20px; }
+    .stat .label { font-size:11px; color:var(--muted); text-transform:uppercase; letter-spacing:.06em; margin-bottom:6px; }
+    .stat .value { font-size:26px; font-weight:600; font-family:var(--mono); }
+    .stat .value.blue   { color:var(--blue); }
+    .stat .value.green  { color:var(--green); }
+    .stat .value.red    { color:var(--red); }
+    .stat .value.yellow { color:var(--yellow); }
+
+    /* Metrics grid (analytics) */
+    .metrics-grid { display:grid; grid-template-columns:repeat(5,1fr); gap:14px; margin-bottom:28px; }
+    .metric { background:var(--surface); border:1px solid var(--border); border-radius:var(--radius); padding:16px 18px; }
+    .metric .label { font-size:10px; color:var(--muted); text-transform:uppercase; letter-spacing:.06em; margin-bottom:4px; }
+    .metric .value { font-size:22px; font-weight:600; font-family:var(--mono); }
+
+    /* Period selector */
+    .period-bar { display:flex; gap:6px; margin-bottom:20px; }
+    .period-btn { font-size:12px; padding:5px 12px; border-radius:var(--radius); border:1px solid var(--border); background:var(--surface); color:var(--muted); cursor:pointer; transition:all .15s; font-family:var(--mono); }
+    .period-btn:hover { color:var(--text); border-color:var(--text); }
+    .period-btn.active { background:var(--blue); color:#000; border-color:var(--blue); font-weight:600; }
+
+    /* Chart containers */
+    .charts-row { display:grid; grid-template-columns:2fr 1fr; gap:16px; margin-bottom:16px; }
+    .chart-card { background:var(--surface); border:1px solid var(--border); border-radius:var(--radius); padding:20px; }
+    .chart-card h3 { font-size:12px; font-weight:600; color:var(--muted); text-transform:uppercase; letter-spacing:.06em; margin-bottom:16px; }
+    .chart-wrap { position:relative; }
+
+    .charts-row2 { display:grid; grid-template-columns:1fr 1fr; gap:16px; margin-bottom:28px; }
+
+    /* Period stats table */
+    .period-stats { background:var(--surface); border:1px solid var(--border); border-radius:var(--radius); overflow:hidden; margin-bottom:28px; }
+    .period-stats table { width:100%; border-collapse:collapse; }
+    .period-stats thead th { background:var(--surface2); padding:10px 16px; text-align:left; font-size:11px; font-weight:600; color:var(--muted); text-transform:uppercase; letter-spacing:.06em; border-bottom:1px solid var(--border); }
+    .period-stats tbody tr { border-bottom:1px solid var(--border); }
+    .period-stats tbody tr:last-child { border-bottom:none; }
+    .period-stats tbody td { padding:10px 16px; font-family:var(--mono); font-size:13px; }
+    .period-stats tbody tr.highlight { background:rgba(88,166,255,.06); }
+
+    /* Portfolio table */
+    .section { margin-bottom:28px; }
+    .section-header { display:flex; align-items:center; justify-content:space-between; margin-bottom:14px; }
+    .section-header h2 { font-size:14px; font-weight:600; }
+    .table-wrap { background:var(--surface); border:1px solid var(--border); border-radius:var(--radius); overflow:hidden; }
+    table { width:100%; border-collapse:collapse; }
+    thead th { background:var(--surface2); padding:10px 16px; text-align:left; font-size:11px; font-weight:600; color:var(--muted); text-transform:uppercase; letter-spacing:.06em; border-bottom:1px solid var(--border); }
+    tbody tr { border-bottom:1px solid var(--border); }
+    tbody tr:last-child { border-bottom:none; }
+    tbody tr:hover { background:rgba(255,255,255,.02); }
+    tbody td { padding:10px 16px; font-family:var(--mono); font-size:13px; }
+
+    .actions { display:flex; gap:8px; }
+    .btn { font-size:13px; font-weight:500; padding:7px 16px; border-radius:var(--radius); border:none; cursor:pointer; transition:opacity .15s; }
+    .btn:hover { opacity:.85; }
+    .btn:disabled { opacity:.4; cursor:not-allowed; }
+    .btn-primary   { background:var(--green); color:#000; }
+    .btn-secondary { background:var(--surface); color:var(--text); border:1px solid var(--border); }
+    .btn-blue      { background:var(--blue); color:#000; }
+
+    .tag { display:inline-block; font-size:11px; padding:2px 8px; border-radius:12px; font-family:var(--mono); }
+    .tag-buy  { background:rgba(63,185,80,.15);  color:var(--green); }
+    .tag-sell { background:rgba(248,81,73,.15);   color:var(--red); }
+    .tag-hold { background:rgba(88,166,255,.1);   color:var(--blue); }
+    .pos { color:var(--green); }
+    .neg { color:var(--red); }
+
+    .bar-bg   { background:var(--border); border-radius:2px; height:5px; margin-bottom:2px; }
+    .bar-fill { height:5px; border-radius:2px; }
+    .bar-fill.green { background:var(--green); }
+    .bar-fill.blue  { background:var(--blue); }
+
+    #banner { display:none; padding:12px 20px; border-radius:var(--radius); margin-bottom:20px; font-size:13px; border:1px solid; }
+    #banner.ok      { background:rgba(63,185,80,.1);  border-color:var(--green); color:var(--green); }
+    #banner.err     { background:rgba(248,81,73,.1);  border-color:var(--red);   color:var(--red); }
+    #banner.loading { background:rgba(88,166,255,.1); border-color:var(--blue);  color:var(--blue); }
+    .empty { text-align:center; padding:48px; color:var(--muted); }
+    @keyframes spin { to { transform:rotate(360deg); } }
+    .spin { display:inline-block; animation:spin .6s linear infinite; margin-right:6px; }
+    .loading-state { text-align:center; padding:60px; color:var(--muted); font-size:13px; }
+  </style>
+</head>
+<body>
+
+<header>
+  <h1>⚡ Momentum Rebalancer</h1>
+  <div class="badges">
+    <span class="badge">{{ broker | upper }}</span>
+    <span class="badge">{{ optimiser | upper }}</span>
+    <span class="badge live">● LIVE</span>
+  </div>
+</header>
+
+<div class="tabs">
+  <div class="tab active" onclick="switchTab('portfolio')">Portfolio</div>
+  <div class="tab" onclick="switchTab('analytics')">Analytics</div>
+</div>
+
+<main>
+  <div id="banner"></div>
+
+  <!-- ── PORTFOLIO TAB ── -->
+  <div id="tab-portfolio" class="tab-content active">
+    <div class="stats">
+      <div class="stat"><div class="label">Portfolio Value</div><div class="value blue" id="sv">—</div></div>
+      <div class="stat"><div class="label">Current Positions</div><div class="value" id="sc">—</div></div>
+      <div class="stat"><div class="label">Target Positions</div><div class="value" id="st">—</div></div>
+      <div class="stat"><div class="label">Pending Trades</div><div class="value" id="sp">—</div></div>
+    </div>
+
+    <div class="section">
+      <div class="section-header">
+        <h2>Actions</h2>
+        <div class="actions">
+          <button class="btn btn-secondary" onclick="loadPortfolio()">↻ Refresh</button>
+          <button class="btn btn-secondary" onclick="runRefresh()">⚙ Re-run Pipeline</button>
+          <button class="btn btn-primary" id="rbtn" onclick="rebalance()">▶ Execute Rebalance</button>
+        </div>
+      </div>
+    </div>
+
+    <div class="section">
+      <div class="section-header">
+        <h2>Pending Trades</h2>
+        <span id="tc" style="color:var(--muted);font-size:12px;"></span>
+      </div>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>Ticker</th><th>Action</th><th>Current %</th><th>Target %</th><th>Delta %</th><th>Target Weight</th></tr></thead>
+          <tbody id="tb"><tr><td colspan="6" class="empty">Loading…</td></tr></tbody>
+        </table>
+      </div>
+    </div>
+
+    <div class="section">
+      <div class="section-header">
+        <h2>All Holdings</h2>
+        <span id="hc" style="color:var(--muted);font-size:12px;"></span>
+      </div>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>Ticker</th><th>Current %</th><th>Target %</th><th>Delta %</th><th>Signal</th><th>Allocation</th></tr></thead>
+          <tbody id="hb"><tr><td colspan="6" class="empty">Loading…</td></tr></tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── ANALYTICS TAB ── -->
+  <div id="tab-analytics" class="tab-content">
+    <div id="analytics-loading" class="loading-state">
+      <div style="font-size:32px;margin-bottom:12px;">📊</div>
+      Click <strong>Run Backtest</strong> to generate analytics
+      <br><br>
+      <button class="btn btn-blue" onclick="loadAnalytics()">▶ Run Backtest</button>
+    </div>
+
+    <div id="analytics-content" style="display:none;">
+
+      <!-- Period selector -->
+      <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:20px;">
+        <h2 style="font-size:14px;font-weight:600;">Performance Analytics</h2>
+        <div class="period-bar" id="period-bar">
+          <button class="period-btn" onclick="setPeriod('3M')">3M</button>
+          <button class="period-btn" onclick="setPeriod('6M')">6M</button>
+          <button class="period-btn" onclick="setPeriod('1Y')">1Y</button>
+          <button class="period-btn" onclick="setPeriod('3Y')">3Y</button>
+          <button class="period-btn" onclick="setPeriod('5Y')">5Y</button>
+          <button class="period-btn active" onclick="setPeriod('All')">All</button>
+        </div>
+      </div>
+
+      <!-- Key metrics -->
+      <div class="metrics-grid" id="metrics-grid"></div>
+
+      <!-- Equity curve + Drawdown -->
+      <div class="charts-row">
+        <div class="chart-card">
+          <h3>Equity Curve — Strategy vs SPY</h3>
+          <div class="chart-wrap"><canvas id="equityChart" height="220"></canvas></div>
+        </div>
+        <div class="chart-card">
+          <h3>Drawdown</h3>
+          <div class="chart-wrap"><canvas id="drawdownChart" height="220"></canvas></div>
+        </div>
+      </div>
+
+      <!-- Monthly returns + Cluster performance -->
+      <div class="charts-row2">
+        <div class="chart-card">
+          <h3>Monthly Returns</h3>
+          <div class="chart-wrap"><canvas id="monthlyChart" height="200"></canvas></div>
+        </div>
+        <div class="chart-card">
+          <h3>Cluster Performance (Avg Monthly Return)</h3>
+          <div class="chart-wrap"><canvas id="clusterChart" height="200"></canvas></div>
+        </div>
+      </div>
+
+      <!-- Period breakdown table -->
+      <div class="section">
+        <div class="section-header"><h2>Period Breakdown</h2></div>
+        <div class="period-stats">
+          <table>
+            <thead>
+              <tr>
+                <th>Period</th>
+                <th>Ann. Return</th>
+                <th>Sharpe</th>
+                <th>Sortino</th>
+                <th>Calmar</th>
+                <th>Omega</th>
+                <th>Max DD</th>
+                <th>Win Rate</th>
+                <th>Alpha</th>
+                <th>Beta</th>
+                <th>SPY Return</th>
+              </tr>
+            </thead>
+            <tbody id="period-table"></tbody>
+          </table>
+        </div>
+      </div>
+
+      <!-- Cluster breakdown table -->
+      <div class="section">
+        <div class="section-header">
+          <h2>Cluster Performance Breakdown</h2>
+          <span id="avg-trades" style="color:var(--muted);font-size:12px;"></span>
+        </div>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>Cluster</th><th>Avg Monthly Return</th><th>Sharpe</th><th>Win Rate</th><th>Total Trades</th></tr></thead>
+            <tbody id="cluster-table"></tbody>
+          </table>
+        </div>
+      </div>
+
+    </div>
+  </div>
+</main>
+
+<script>
+  // ── State ──────────────────────────────────────────────────────────────────
+  let btData      = null;
+  let currentPeriod = 'All';
+  let equityChart, drawdownChart, monthlyChart, clusterChart;
+
+  // ── Helpers ────────────────────────────────────────────────────────────────
+  const fmt   = n => (typeof n === 'number' ? n.toFixed(2) : '0.00') + '%';
+  const fmtN  = n => typeof n === 'number' ? n.toFixed(3) : '—';
+  const fmtU  = n => '$' + (typeof n === 'number' ? n.toLocaleString('en-US', {minimumFractionDigits:0}) : '0');
+  const clr   = v => v > 0 ? 'var(--green)' : v < 0 ? 'var(--red)' : 'var(--text)';
+
+  function banner(msg, type) {
+    const b = document.getElementById('banner');
+    b.style.display = 'block'; b.className = type;
+    b.innerHTML = (type==='loading'?'<span class="spin">↻</span>':'')+msg;
+    if (type !== 'loading') setTimeout(()=>{ b.style.display='none'; }, 6000);
+  }
+
+  function switchTab(name) {
+    document.querySelectorAll('.tab').forEach((t,i) => t.classList.toggle('active', ['portfolio','analytics'][i]===name));
+    document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
+    document.getElementById('tab-'+name).classList.add('active');
+  }
+
+  // ── Portfolio ──────────────────────────────────────────────────────────────
+  async function loadPortfolio() {
+    try {
+      const [p, t] = await Promise.all([
+        fetch('/api/portfolio').then(r=>r.json()),
+        fetch('/api/trades').then(r=>r.json()),
+      ]);
+      if (p.error) { banner(p.error,'err'); return; }
+
+      document.getElementById('sv').textContent = fmtU(p.portfolio_value);
+      document.getElementById('sc').textContent = p.n_positions;
+      document.getElementById('st').textContent = p.n_target;
+      document.getElementById('sp').textContent = t.n_trades||0;
+
+      const hb = document.getElementById('hb');
+      document.getElementById('hc').textContent = `${(p.holdings||[]).length} tickers`;
+      hb.innerHTML = !(p.holdings||[]).length
+        ? '<tr><td colspan="6" class="empty">No holdings yet.</td></tr>'
+        : (p.holdings||[]).map(h=>{
+            const sig = h.delta_pct>0.5?`<span class="tag tag-buy">BUY</span>`:h.delta_pct<-0.5?`<span class="tag tag-sell">SELL</span>`:`<span class="tag tag-hold">HOLD</span>`;
+            return `<tr><td><strong>${h.ticker}</strong></td><td>${fmt(h.current_pct)}</td><td>${fmt(h.target_pct)}</td><td class="${h.delta_pct>=0?'pos':'neg'}">${h.delta_pct>=0?'+':''}${fmt(h.delta_pct)}</td><td>${sig}</td><td><div class="bar-bg"><div class="bar-fill blue" style="width:${Math.min(h.current_pct*5,100)}%"></div></div><div class="bar-bg"><div class="bar-fill green" style="width:${Math.min(h.target_pct*5,100)}%"></div></div></td></tr>`;
+          }).join('');
+
+      const tb = document.getElementById('tb');
+      document.getElementById('tc').textContent = t.n_trades?`${t.n_trades} trades pending`:'';
+      tb.innerHTML = !(t.trades||[]).length
+        ? '<tr><td colspan="6" class="empty">✓ Portfolio is at target. No trades needed.</td></tr>'
+        : (t.trades||[]).map(tr=>`<tr><td><strong>${tr.ticker}</strong></td><td>${tr.action==='BUY'?'<span class="tag tag-buy">BUY</span>':'<span class="tag tag-sell">SELL</span>'}</td><td>${fmt(tr.current_pct)}</td><td>${fmt(tr.target_pct)}</td><td class="${tr.delta_pct>=0?'pos':'neg'}">${tr.delta_pct>=0?'+':''}${fmt(tr.delta_pct)}</td><td><div class="bar-bg"><div class="bar-fill green" style="width:${Math.min(tr.target_pct*5,100)}%"></div></div></td></tr>`).join('');
+    } catch(e) { banner('Failed to load: '+e.message,'err'); }
+  }
+
+  async function rebalance() {
+    if (!confirm('Submit all pending trades to TWS now?')) return;
+    const btn = document.getElementById('rbtn'); btn.disabled=true;
+    banner('Submitting orders to TWS…','loading');
+    try {
+      const r = await fetch('/api/rebalance',{method:'POST',headers:{'Content-Type':'application/json'},body:'{}'}).then(r=>r.json());
+      if (r.error) banner(r.error,'err'); else { banner(r.message,'ok'); loadPortfolio(); }
+    } catch(e) { banner('Error: '+e.message,'err'); } finally { btn.disabled=false; }
+  }
+
+  async function runRefresh() {
+    if (!confirm('Re-run the full pipeline? This takes several minutes.')) return;
+    banner('Running pipeline… please wait.','loading');
+    try {
+      const r = await fetch('/api/refresh',{method:'POST',headers:{'Content-Type':'application/json'},body:'{}'}).then(r=>r.json());
+      if (r.error) banner(r.error,'err'); else { banner(r.message,'ok'); loadPortfolio(); }
+    } catch(e) { banner('Error: '+e.message,'err'); }
+  }
+
+  // ── Analytics ──────────────────────────────────────────────────────────────
+  async function loadAnalytics() {
+    document.getElementById('analytics-loading').innerHTML = '<div class="loading-state"><span class="spin" style="font-size:24px;">↻</span> Running backtest… this may take a minute.</div>';
+    try {
+      const data = await fetch('/api/backtest').then(r=>r.json());
+      if (data.error) { banner(data.error,'err'); return; }
+      btData = data;
+      document.getElementById('analytics-loading').style.display = 'none';
+      document.getElementById('analytics-content').style.display = 'block';
+      renderAnalytics('All');
+    } catch(e) { banner('Backtest failed: '+e.message,'err'); }
+  }
+
+  function setPeriod(p) {
+    currentPeriod = p;
+    document.querySelectorAll('.period-btn').forEach(b => b.classList.toggle('active', b.textContent===p));
+    renderAnalytics(p);
+  }
+
+  function sliceData(arr, dates, period) {
+    const months = {'1M':1,'3M':3,'6M':6,'1Y':12,'3Y':36,'5Y':60,'All':null}[period];
+    if (!months) return {arr, dates};
+    return { arr: arr.slice(-months), dates: dates.slice(-months) };
+  }
+
+  function renderAnalytics(period) {
+    if (!btData) return;
+    const stats = btData.period_stats[period] || btData.period_stats['All'];
+    renderMetrics(stats);
+    renderEquityChart(period);
+    renderDrawdownChart(period);
+    renderMonthlyChart(period);
+    renderClusterChart();
+    renderPeriodTable();
+    renderClusterTable();
+    document.getElementById('avg-trades').textContent = `Avg ${btData.avg_trades_per_month} trades/month`;
+  }
+
+  function renderMetrics(s) {
+    if (s.insufficient_data) {
+      document.getElementById('metrics-grid').style.gridTemplateColumns = '1fr';
+      document.getElementById('metrics-grid').innerHTML = `
+        <div class="metric" style="grid-column:1/-1;text-align:center;padding:24px;">
+          <div class="label">Period Return</div>
+          <div class="value ${s.annualised_return>0?'green':'red'}">${fmt(s.annualised_return)}</div>
+          <div style="color:var(--muted);font-size:12px;margin-top:12px;">Not enough data for ratios — select 3M or longer</div>
+        </div>`;
+      return;
+    }
+    document.getElementById('metrics-grid').style.gridTemplateColumns = 'repeat(5,1fr)';
+    const items = [
+      { label:'Ann. Return',  value: fmt(s.annualised_return),    color: s.annualised_return>0?'green':'red' },
+      { label:'Sharpe',       value: fmtN(s.sharpe),              color: s.sharpe>1?'green':s.sharpe>0?'yellow':'red' },
+      { label:'Sortino',      value: fmtN(s.sortino),             color: s.sortino>1?'green':s.sortino>0?'yellow':'red' },
+      { label:'Calmar',       value: fmtN(s.calmar),              color: s.calmar>1?'green':s.calmar>0?'yellow':'red' },
+      { label:'Omega',        value: fmtN(s.omega),               color: s.omega>1?'green':'red' },
+      { label:'Max Drawdown', value: fmt(s.max_drawdown),         color: 'red' },
+      { label:'Win Rate',     value: fmt(s.win_rate),             color: s.win_rate>50?'green':'red' },
+      { label:'Alpha (Ann.)', value: s.alpha!=null?fmt(s.alpha):'—', color: s.alpha>0?'green':'red' },
+      { label:'Beta',         value: s.beta!=null?fmtN(s.beta):'—',  color: '' },
+      { label:'SPY Return',   value: s.benchmark_ann_return!=null?fmt(s.benchmark_ann_return):'—', color: '' },
+    ];
+    document.getElementById('metrics-grid').innerHTML = items.map(i=>
+      `<div class="metric"><div class="label">${i.label}</div><div class="value ${i.color}">${i.value??'—'}</div></div>`
+    ).join('');
+  }
+
+  const chartDefaults = {
+    responsive: true,
+    plugins: { legend:{ labels:{ color:'#8b949e', font:{size:11} } } },
+    scales: {
+      x: { ticks:{ color:'#8b949e', maxTicksLimit:8, font:{size:10} }, grid:{ color:'#30363d' } },
+      y: { ticks:{ color:'#8b949e', font:{size:10} }, grid:{ color:'#30363d' } }
+    }
+  };
+
+  function renderEquityChart(period) {
+    const eq   = btData.equity;
+    const {arr: strat, dates} = sliceData(eq.strategy, eq.dates, period);
+    const {arr: bench}        = sliceData(eq.benchmark, eq.dates, period);
+    const labels = dates.map(d => d.slice(0,7));
+
+    if (equityChart) equityChart.destroy();
+    equityChart = new Chart(document.getElementById('equityChart'), {
+      type: 'line',
+      data: {
+        labels,
+        datasets: [
+          { label:'Strategy', data:strat, borderColor:'#3fb950', backgroundColor:'rgba(63,185,80,.08)', borderWidth:2, pointRadius:0, fill:true, tension:.3 },
+          { label:'SPY',      data:bench, borderColor:'#58a6ff', backgroundColor:'transparent',          borderWidth:1.5, pointRadius:0, fill:false, borderDash:[4,4], tension:.3 },
+        ]
+      },
+      options: { ...chartDefaults, plugins:{ ...chartDefaults.plugins, tooltip:{ callbacks:{ label: ctx => ` ${ctx.dataset.label}: ${((ctx.raw-1)*100).toFixed(1)}%` } } } }
+    });
+  }
+
+  function renderDrawdownChart(period) {
+    const dd = btData.drawdown;
+    const {arr, dates} = sliceData(dd.values, dd.dates, period);
+    if (drawdownChart) drawdownChart.destroy();
+    drawdownChart = new Chart(document.getElementById('drawdownChart'), {
+      type: 'line',
+      data: {
+        labels: dates.map(d=>d.slice(0,7)),
+        datasets: [{ label:'Drawdown', data:arr, borderColor:'#f85149', backgroundColor:'rgba(248,81,73,.1)', borderWidth:1.5, pointRadius:0, fill:true, tension:.3 }]
+      },
+      options: { ...chartDefaults, scales:{ ...chartDefaults.scales, y:{ ...chartDefaults.scales.y, ticks:{ ...chartDefaults.scales.y.ticks, callback: v => v+'%' } } } }
+    });
+  }
+
+  function renderMonthlyChart(period) {
+    const m = btData.monthly;
+    const {arr, dates} = sliceData(m.returns, m.dates, period);
+    if (monthlyChart) monthlyChart.destroy();
+    monthlyChart = new Chart(document.getElementById('monthlyChart'), {
+      type: 'bar',
+      data: {
+        labels: dates.map(d=>d.slice(0,7)),
+        datasets: [{ label:'Monthly Return', data:arr, backgroundColor: arr.map(v=>v>=0?'rgba(63,185,80,.7)':'rgba(248,81,73,.7)'), borderWidth:0 }]
+      },
+      options: { ...chartDefaults, scales:{ ...chartDefaults.scales, y:{ ...chartDefaults.scales.y, ticks:{ ...chartDefaults.scales.y.ticks, callback: v => v+'%' } } } }
+    });
+  }
+
+  function renderClusterChart() {
+    const cp = btData.cluster_perf;
+    if (!cp.length) return;
+    if (clusterChart) clusterChart.destroy();
+    clusterChart = new Chart(document.getElementById('clusterChart'), {
+      type: 'bar',
+      data: {
+        labels: cp.map(c=>'Cluster '+c.cluster),
+        datasets: [{ label:'Avg Monthly Return %', data:cp.map(c=>c.avg_return), backgroundColor: cp.map(c=>c.avg_return>=0?'rgba(63,185,80,.7)':'rgba(248,81,73,.7)'), borderWidth:0 }]
+      },
+      options: { ...chartDefaults, scales:{ ...chartDefaults.scales, y:{ ...chartDefaults.scales.y, ticks:{ ...chartDefaults.scales.y.ticks, callback: v => v+'%' } } } }
+    });
+  }
+
+  function renderPeriodTable() {
+    const periods = ['3M','6M','1Y','3Y','5Y','All'];
+    document.getElementById('period-table').innerHTML = periods.map(p => {
+      const s = btData.period_stats[p];
+      if (!s) return '';
+      const hi = p === currentPeriod;
+      return `<tr class="${hi?'highlight':''}">
+        <td><strong>${p}</strong></td>
+        <td style="color:${clr(s.annualised_return)}">${fmt(s.annualised_return)}</td>
+        <td style="color:${clr(s.sharpe)}">${fmtN(s.sharpe)}</td>
+        <td style="color:${clr(s.sortino)}">${fmtN(s.sortino)}</td>
+        <td style="color:${clr(s.calmar)}">${fmtN(s.calmar)}</td>
+        <td style="color:${clr(s.omega-1)}">${fmtN(s.omega)}</td>
+        <td style="color:var(--red)">${fmt(s.max_drawdown)}</td>
+        <td style="color:${s.win_rate>50?'var(--green)':'var(--red)'}">${fmt(s.win_rate)}</td>
+        <td style="color:${clr(s.alpha)}">${fmt(s.alpha)}</td>
+        <td>${fmtN(s.beta)}</td>
+        <td>${fmt(s.benchmark_ann_return)}</td>
+      </tr>`;
+    }).join('');
+  }
+
+  function renderClusterTable() {
+    const cp = btData.cluster_perf;
+    document.getElementById('cluster-table').innerHTML = !cp.length
+      ? '<tr><td colspan="5" class="empty">No cluster data.</td></tr>'
+      : cp.sort((a,b)=>b.avg_return-a.avg_return).map(c=>`<tr>
+          <td><strong>Cluster ${c.cluster}</strong></td>
+          <td style="color:${clr(c.avg_return)}">${c.avg_return>=0?'+':''}${c.avg_return.toFixed(2)}%</td>
+          <td style="color:${clr(c.sharpe)}">${c.sharpe.toFixed(3)}</td>
+          <td style="color:${c.win_rate>50?'var(--green)':'var(--red)'}">${c.win_rate.toFixed(1)}%</td>
+          <td>${c.n_trades}</td>
+        </tr>`).join('');
+  }
+
+  // ── Init ───────────────────────────────────────────────────────────────────
+  loadPortfolio();
+</script>
+</body>
+</html>

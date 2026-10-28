@@ -1,9 +1,22 @@
+# Python
 __pycache__/
-*.pyc
-.ipynb_checkpoints/
+*.py[cod]
+*.egg-info/
+build/
+dist/
+.pytest_cache/
+
+# Environments & secrets
 .venv/
 venv/
+env/
 .env
+
+# Jupyter / OS
+.ipynb_checkpoints/
 .DS_Store
+
+# Generated data: keep the folder, ignore the contents
 data/store/
 data/results/
+data/external/

@@ -1,0 +1,8 @@
+# configs/stress_windows.yaml — named windows for scripts/stress_windows.py.
+# Dates are inclusive month strings (YYYY-MM). A window only works if it falls inside
+# the backtest sample (`lookback_years` back from the last month-end; the first ~3 years are warm-up).
+# Only a handful of stress episodes exist in the sample: do not over-tune to them.
+windows:
+  "2020 crash (Feb-Mar)":     ["2020-02", "2020-03"]
+  "2020 rebound (Apr-Dec)":   ["2020-04", "2020-12"]
+  "2022 drawdown (Jan-Dec)":  ["2022-01", "2022-12"]

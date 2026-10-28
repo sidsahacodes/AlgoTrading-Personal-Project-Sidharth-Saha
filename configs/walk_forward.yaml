@@ -1,0 +1,28 @@
+# configs/walk_forward.yaml — out-of-sample evaluation settings for `mr walkforward`.
+#
+# What is "trained"?  The strategy has no parameters fitted on prices (clusters are refit each
+# month, HRP uses past returns only). What *is* chosen using data are the hyperparameters in
+# `grid`. Walk-forward chooses them using only data available before each test window:
+#
+#   |--------- train ---------|-- validation --|-- embargo --|--- test ---|
+#   (reported, not used to pick)  (picks the config)             (untouched, out-of-sample)
+#
+# Blocks are counted in signal months. The train block expands; blocks then step forward by
+# `step_months`. The stitched test blocks form the out-of-sample record.
+
+splits:
+  train_months: 48
+  val_months: 12
+  test_months: 12
+  step_months: 12          # must be >= test_months
+  embargo_months: 1        # gap between the last validation signal and the first test signal
+
+objective: sharpe          # sharpe | cumulative_return, measured NET of costs on the validation block
+min_months: 12             # a config needs at least this many validation months to be eligible
+
+# Every combination is tried in every fold. More combinations = more chance that the winner
+# is luck; keep this small.
+grid:
+  momentum_feature: [return_3m, return_6m, return_12m]
+  top_n_per_cluster: [3, 4, 5]
+  n_clusters: [4, 5, 6]
