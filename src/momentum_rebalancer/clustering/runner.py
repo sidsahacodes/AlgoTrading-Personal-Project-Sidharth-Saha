@@ -55,7 +55,7 @@ def load_clustered(method: str = CLUSTER_METHOD) -> pd.DataFrame:
     if not path.exists():
         raise FileNotFoundError(
             f"No cached clusters for method='{method}'. "
-            f"Run: python run.py cluster"
+            f"Run: mr cluster"
         )
     return pd.read_parquet(path)
 
